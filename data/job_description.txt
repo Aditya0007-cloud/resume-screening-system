@@ -1,0 +1,16 @@
+Senior Full-Stack AI Engineer
+
+We are hiring a senior engineer to build production AI applications for resume screening and ranking.
+
+Required skills:
+- Python, FastAPI, React, TypeScript, SQL, SQLite or PostgreSQL
+- Machine learning, NLP, LLM evaluation, OpenAI API
+- REST API design, testing, Docker, Git
+- 4+ years experience shipping production software
+
+Preferred skills:
+- scikit-learn, pandas, RAG, system design, AWS, stakeholder management
+
+Responsibilities:
+- Parse PDF and DOCX resumes, analyze job descriptions, rank candidates, and explain decisions.
+- Collaborate with recruiters and product teams to improve screening quality.

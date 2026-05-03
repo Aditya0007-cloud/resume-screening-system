@@ -1,0 +1,20 @@
+Jordan Lee
+Email: jordan.lee@example.com
+Phone: +1 555 0199
+
+Frontend Developer with 3 years of experience building SaaS dashboards.
+
+Skills
+- React, JavaScript, TypeScript, Next.js, HTML, CSS
+- Git, agile, communication, stakeholder management
+- Basic Node.js and REST API integration
+
+Experience
+Frontend Developer, DesignDesk
+- Built responsive dashboards for operations teams using React and TypeScript.
+- Integrated REST APIs and improved search and filtering workflows.
+- Worked closely with designers and customer success teams.
+
+Projects
+- Created a reusable component library for forms, tables, and charts.
+- Improved application accessibility and reduced UI defects.

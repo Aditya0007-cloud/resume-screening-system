@@ -1,0 +1,21 @@
+Alex Morgan
+Email: alex.morgan@example.com
+Phone: +1 555 0142
+
+Senior Full-Stack AI Engineer with 6 years of experience shipping production software.
+
+Skills
+- Python, FastAPI, React, TypeScript, SQL, SQLite, PostgreSQL
+- Machine learning, NLP, LLM evaluation, OpenAI API, scikit-learn, pandas
+- REST API design, Docker, Git, CI/CD, testing, AWS
+
+Experience
+Lead AI Engineer, TalentFlow
+- Built a resume parsing and candidate ranking platform using FastAPI, React, TypeScript, and PostgreSQL.
+- Implemented TF-IDF and cosine similarity baselines with LLM evaluation for explainable screening.
+- Deployed production services on AWS with Docker and automated tests.
+- Collaborated with recruiters and stakeholders to improve ranking quality and reduce manual review time.
+
+Projects
+- Designed a RAG assistant for recruiter search over candidate profiles.
+- Mentored three engineers and reviewed system design proposals.

@@ -1,0 +1,21 @@
+Priya Shah
+Email: priya.shah@example.com
+Phone: +1 555 0188
+
+Backend Engineer with 4 years of experience building data products and internal platforms.
+
+Skills
+- Python, Django, Flask, SQL, PostgreSQL, pandas, numpy
+- REST API design, Git, Docker, testing, Linux
+- Machine learning basics, scikit-learn, ETL, Airflow
+
+Experience
+Backend Engineer, InsightOps
+- Built data ingestion APIs and reporting services used by analytics teams.
+- Created Python pipelines for extracting and normalizing customer documents.
+- Added unit and integration tests around API workflows.
+- Partnered with product managers to translate requirements into technical plans.
+
+Projects
+- Built a classifier prototype with scikit-learn to categorize support tickets.
+- Migrated SQLite prototypes to PostgreSQL for production usage.
