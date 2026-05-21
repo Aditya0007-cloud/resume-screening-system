@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from io import BytesIO
+from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
@@ -28,12 +29,12 @@ def build_ats_report_pdf(candidate: dict, run: dict) -> bytes:
 
     story = [
         Paragraph("AI Resume Screening & ATS Analyzer", title_style),
-        Paragraph(f"Candidate ATS Report: {candidate['name']}", styles["Heading3"]),
+        Paragraph(f"Candidate ATS Report: {_safe_text(candidate['name'])}", styles["Heading3"]),
         Spacer(1, 0.12 * inch),
         _summary_table(candidate),
         Spacer(1, 0.16 * inch),
         Paragraph("Recruiter Summary", heading_style),
-        Paragraph(candidate["summary"], body_style),
+        Paragraph(_safe_text(candidate["summary"]), body_style),
         Paragraph("ATS Score Breakdown", heading_style),
         _breakdown_table(candidate["ats_breakdown"]),
         Paragraph("Matched Skills", heading_style),
@@ -41,7 +42,7 @@ def build_ats_report_pdf(candidate: dict, run: dict) -> bytes:
         Paragraph("Missing Skills", heading_style),
         Paragraph(_comma_text(candidate["skills_missing"]), body_style),
         Paragraph("Recommendations", heading_style),
-        Paragraph("<br/>".join(candidate["recommended_improvements"]), body_style),
+        Paragraph("<br/>".join(_safe_text(item) for item in candidate["recommended_improvements"]), body_style),
         Paragraph("Role Signals", heading_style),
         Paragraph(_comma_text(run["job_analysis"]["required_skills"] + run["job_analysis"]["preferred_skills"]), body_style),
     ]
@@ -53,10 +54,10 @@ def build_ats_report_pdf(candidate: dict, run: dict) -> bytes:
 
 def _summary_table(candidate: dict) -> Table:
     rows = [
-        ["Candidate", candidate["name"]],
-        ["File", candidate["filename"]],
+        ["Candidate", _safe_text(candidate["name"])],
+        ["File", _safe_text(candidate["filename"])],
         ["ATS Match", f"{round(candidate['score'])}%"],
-        ["Decision", candidate["decision"]],
+        ["Decision", _safe_text(candidate["decision"])],
         ["AI Score", "N/A" if candidate["llm_score"] is None else f"{round(candidate['llm_score'])}%"],
     ]
     table = Table(rows, colWidths=[1.6 * inch, 5.1 * inch])
@@ -93,4 +94,8 @@ def _breakdown_table(breakdown: dict[str, float]) -> Table:
 
 
 def _comma_text(items: list[str]) -> str:
-    return ", ".join(items) if items else "None found."
+    return ", ".join(_safe_text(item) for item in items) if items else "None found."
+
+
+def _safe_text(value: object) -> str:
+    return escape(str(value), {'"': "&quot;", "'": "&#x27;"})
