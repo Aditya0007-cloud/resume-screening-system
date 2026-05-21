@@ -14,6 +14,7 @@ body {
   margin: 0;
   background: #eef1f5;
   color: #17202a;
+  min-width: 320px;
 }
 
 button,
@@ -25,4 +26,13 @@ select {
 
 .focus-ring {
   @apply focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2;
+}
+
+::selection {
+  background: rgba(37, 99, 235, 0.18);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #94a3b8 transparent;
 }

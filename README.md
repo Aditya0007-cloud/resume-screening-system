@@ -1,16 +1,59 @@
-# AI Resume Screening & Ranking System
+# 🤖 AI Resume Screening & ATS Analyzer
 
-Production-ready starter app for screening batches of PDF/DOCX resumes against a job description. The backend parses resumes, extracts role signals, computes a TF-IDF cosine baseline, optionally calls OpenAI for structured evaluation, combines scores, stores results in SQLite, and exposes ranked results to a Next.js dashboard.
+![Next.js](https://img.shields.io/badge/Frontend-Next.js-black?logo=nextdotjs)
+![Tailwind CSS](https://img.shields.io/badge/Styling-Tailwind_CSS-38BDF8?logo=tailwindcss&logoColor=white)
+![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688?logo=fastapi&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)
+![OpenAI Ready](https://img.shields.io/badge/AI-OpenAI_ready-412991)
+![License](https://img.shields.io/badge/License-MIT-green)
 
-## Architecture
+A production-style AI resume screening platform that helps recruiters upload resumes, compare them against a job description, calculate ATS compatibility, extract skills, rank candidates, and review explainable hiring insights from a modern dashboard.
 
-- `frontend/`: Next.js + Tailwind dashboard for upload, job description input, ranking, filtering, admin stats, highlighted resume review, shortlist email, and CSV export.
-- `backend/`: FastAPI service with SQLAlchemy models, resume parsers, job description analysis, TF-IDF matching, OpenAI evaluation, and result serialization.
-- `data/`: SQLite database location, generated uploads, sample job description, and sample resume source data.
+## ✨ Features
 
-The AI path is optional. If `OPENAI_API_KEY` is unset, `/analyze` uses a deterministic local evaluator with the same response schema so the app remains fully usable.
+- 📄 Drag-and-drop PDF/DOCX resume upload
+- 🎯 ATS compatibility score out of 100
+- 🧠 Optional OpenAI-powered resume evaluation
+- 🔍 Job description matching with missing skills and improvement suggestions
+- 🧩 Technical skills, soft skills, and tools/framework extraction
+- 🏆 Candidate ranking with top-candidate visibility
+- 📊 Analytics charts for score distribution, skill frequency, and ranking
+- 🧾 Resume preview with highlighted job signals
+- 📬 Shortlist email workflow with local outbox fallback
+- 📤 CSV export for screening results
+- 🌙 Dark mode and responsive recruiter dashboard
+- 🔐 Optional admin token protection
 
-## Backend Setup
+## 🧱 Tech Stack
+
+| Layer | Technology |
+| --- | --- |
+| Frontend | Next.js, React, TypeScript, Tailwind CSS |
+| Charts | Recharts |
+| Backend | FastAPI, SQLAlchemy, Pydantic |
+| Resume Parsing | pdfplumber, PyPDF2, python-docx |
+| Scoring | TF-IDF, heuristic ATS scoring, optional OpenAI evaluation |
+| Database | SQLite by default via `DATABASE_URL` for beginner-friendly local setup |
+| Deployment | Vercel frontend, Render/Railway backend |
+
+## 🖼️ Screenshots
+
+> Add screenshots after running the app locally.
+
+| Dashboard | Candidate Detail | Analytics |
+| --- | --- | --- |
+| `docs/screenshots/dashboard.png` | `docs/screenshots/candidate-detail.png` | `docs/screenshots/analytics.png` |
+
+## 🚀 Installation
+
+### 1. Clone the repository
+
+```bash
+git clone <your-repository-url>
+cd "AI Resume screening system"
+```
+
+### 2. Backend setup
 
 ```bash
 python3 -m venv .venv
@@ -21,22 +64,13 @@ python -m backend.utils.generate_sample_files
 uvicorn backend.main:app --reload --port 8000
 ```
 
-Add your key to `.env` to enable LLM evaluation:
+The API will run at:
 
-```bash
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4o-mini
+```text
+http://localhost:8000
 ```
 
-Set `ADMIN_TOKEN` to protect upload, analyze, export, admin stats, and shortlist email actions. Leave it empty for local demos.
-
-```bash
-ADMIN_TOKEN=change-me
-```
-
-Shortlist email uses SMTP when configured. Without SMTP, the backend writes the email body to `data/outbox.log` so the workflow can still be tested locally.
-
-## Frontend Setup
+### 3. Frontend setup
 
 ```bash
 cd frontend
@@ -44,47 +78,147 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`. The frontend expects the API at `http://localhost:8000`. Override with `NEXT_PUBLIC_API_BASE` if needed.
+Open:
 
-## API
+```text
+http://localhost:3000
+```
 
-- `POST /upload-resumes`: multipart upload with one or more `files`.
-- `POST /analyze`: body `{ "job_description": "...", "use_llm": true }`.
-- `GET /results`: latest ranked screening run.
-- `GET /results/export`: latest results as CSV.
-- `GET /resumes`: uploaded resume inventory.
-- `POST /shortlist/email`: email selected candidates through SMTP or local outbox fallback.
-- `GET /admin/stats`: admin counters for resumes, runs, decisions, and results.
-- `GET /health`: service health.
+## ⚙️ Environment Variables
 
-When `ADMIN_TOKEN` is set, send it as:
+Create `.env` in the project root:
+
+```env
+APP_NAME="AI Resume Screening & ATS Analyzer"
+DATABASE_URL=sqlite:///./data/resume_screening.db
+UPLOAD_DIR=data/uploads
+CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000"]
+
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-4o-mini
+ADMIN_TOKEN=
+
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_USERNAME=
+SMTP_PASSWORD=
+EMAIL_FROM=recruiting@example.com
+OUTBOX_PATH=data/outbox.log
+```
+
+For the frontend, set this in `frontend/.env.local` or your Vercel project:
+
+```env
+NEXT_PUBLIC_API_BASE=http://localhost:8000
+```
+
+## 🧪 Usage
+
+1. Start the backend and frontend.
+2. Upload one or more PDF/DOCX resumes.
+3. Paste a job description in the dashboard.
+4. Click **Analyze**.
+5. Review ATS scores, missing skills, extracted skills, rankings, and charts.
+6. Export results as CSV or email shortlisted candidates.
+
+If `OPENAI_API_KEY` is empty, the app still works using deterministic local ATS scoring.
+
+## 📡 API Overview
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `GET` | `/health` | Backend health check |
+| `POST` | `/upload-resumes` | Upload PDF/DOCX resumes |
+| `POST` | `/analyze` | Run ATS and candidate ranking analysis |
+| `GET` | `/results` | Get latest analysis results |
+| `GET` | `/results/export` | Download latest results as CSV |
+| `GET` | `/resumes` | List uploaded resumes |
+| `POST` | `/shortlist/email` | Email shortlisted candidates |
+| `GET` | `/admin/stats` | Dashboard counters |
+
+## 📁 Folder Structure
+
+```text
+.
+├── backend/
+│   ├── api/                 # FastAPI routes and auth
+│   ├── models/              # SQLAlchemy database models
+│   ├── schemas/             # Pydantic request/response schemas
+│   ├── services/            # ATS scoring, parsing, matching, AI evaluation
+│   ├── utils/               # Text helpers, CSV export, sample generation
+│   ├── config.py            # Environment-based settings
+│   ├── database.py          # Database engine/session setup
+│   └── main.py              # FastAPI app entrypoint
+├── data/
+│   ├── sample_resumes/      # Demo resumes
+│   └── job_description.txt  # Demo job description
+├── frontend/
+│   ├── app/                 # Next.js app routes and global styles
+│   ├── components/          # Reusable React components
+│   └── lib/                 # API client helpers
+├── .env.example
+├── requirements.txt
+└── README.md
+```
+
+## ☁️ Deployment
+
+### Frontend on Vercel
+
+1. Import the repository into Vercel.
+2. Set the root directory to `frontend`.
+3. Add environment variable:
+
+```env
+NEXT_PUBLIC_API_BASE=https://your-backend-url.onrender.com
+```
+
+4. Deploy with the default Next.js build command:
 
 ```bash
-X-Admin-Token: change-me
+npm run build
 ```
 
-Each result contains:
+### Backend on Render or Railway
 
-```json
-{
-  "name": "",
-  "score": 0,
-  "skills_matched": [],
-  "skills_missing": [],
-  "summary": "",
-  "decision": "Selected",
-  "resume_text": ""
-}
+Use these settings:
+
+```text
+Build command: pip install -r requirements.txt
+Start command: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
 ```
 
-## Sample Data
+Recommended environment variables:
 
-- Job description: `data/job_description.txt`
-- Resume source text: `data/sample_resumes/*.txt`
-- Generate uploadable sample PDFs and DOCX files:
-
-```bash
-python -m backend.utils.generate_sample_files
+```env
+DATABASE_URL=sqlite:///./data/resume_screening.db
+ADMIN_TOKEN=your-secure-token
+OPENAI_API_KEY=your-openai-key
+CORS_ORIGINS=["https://your-vercel-app.vercel.app"]
 ```
 
-Upload the generated files from `data/sample_resumes/` through the dashboard.
+For persistent production data, use a managed database and update `DATABASE_URL`.
+
+## 🛣️ Future Enhancements
+
+- User authentication and recruiter workspaces
+- MongoDB or PostgreSQL production storage option
+- Downloadable ATS report PDF
+- Resume red-flag detection and bias checks
+- Candidate notes and pipeline stages
+- Role templates for faster job-description entry
+- Automated screenshot gallery for GitHub
+
+## 🤝 Contributing
+
+Contributions are welcome.
+
+1. Fork the project.
+2. Create a feature branch.
+3. Make your changes with clear commits.
+4. Run backend and frontend checks.
+5. Open a pull request with a short explanation and screenshots when UI changes are included.
+
+## 📄 License
+
+This project is released under the MIT License. You can use it for learning, portfolio projects, and further product development.

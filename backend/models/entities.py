@@ -49,6 +49,11 @@ class ScreeningResult(Base):
     weaknesses: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     summary: Mapped[str] = mapped_column(Text, nullable=False)
     highlighted_terms: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    ats_breakdown: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    technical_skills: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    soft_skills: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    tools: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    recommended_improvements: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
 
     run: Mapped[ScreeningRun] = relationship(back_populates="results")
     resume: Mapped[Resume] = relationship(back_populates="results")

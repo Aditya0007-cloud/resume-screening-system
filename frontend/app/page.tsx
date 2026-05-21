@@ -1,17 +1,37 @@
 "use client";
 
-import { ChangeEvent, useMemo, useState } from "react";
+import { ChangeEvent, DragEvent, useMemo, useState } from "react";
 import {
-  ArrowDownToLine,
+  BarChart3,
+  BrainCircuit,
+  CheckCircle2,
+  CircleAlert,
+  Download,
   FileText,
   Filter,
   Loader2,
   Mail,
+  Moon,
   Search,
   ShieldCheck,
-  SlidersHorizontal,
-  Upload,
+  Sparkles,
+  Sun,
+  UploadCloud,
+  Users,
+  X,
 } from "lucide-react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import {
   AdminStats,
   analyze,
@@ -24,6 +44,8 @@ import {
   UploadedResume,
 } from "@/lib/api";
 import { CandidateCard } from "@/components/CandidateCard";
+
+const productName = "AI Resume Screening & ATS Analyzer";
 
 const sampleJobDescription = `Senior Full-Stack AI Engineer
 
@@ -43,12 +65,19 @@ Responsibilities:
 - Collaborate with recruiters and product teams to improve screening quality.`;
 
 const decisions = ["All", "Selected", "Maybe", "Rejected"] as const;
+const chartColors = ["#2563EB", "#0F766E", "#F59E0B", "#EF4444", "#7C3AED", "#0891B2"];
+
+type ToastState = {
+  type: "success" | "error" | "info";
+  message: string;
+};
 
 export default function Home() {
   const [files, setFiles] = useState<File[]>([]);
   const [uploaded, setUploaded] = useState<UploadedResume[]>([]);
   const [jobDescription, setJobDescription] = useState(sampleJobDescription);
   const [useLlm, setUseLlm] = useState(true);
+  const [darkMode, setDarkMode] = useState(false);
   const [results, setResults] = useState<AnalyzeResponse | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [adminToken, setAdminToken] = useState("");
@@ -57,8 +86,9 @@ export default function Home() {
   const [search, setSearch] = useState("");
   const [decision, setDecision] = useState<(typeof decisions)[number]>("All");
   const [loading, setLoading] = useState<"upload" | "analyze" | "csv" | "email" | "stats" | null>(null);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [dragActive, setDragActive] = useState(false);
+  const [toast, setToast] = useState<ToastState | null>(null);
 
   const selected = useMemo(() => {
     if (!results?.results.length) return null;
@@ -68,77 +98,110 @@ export default function Home() {
   const filteredResults = useMemo(() => {
     const query = search.trim().toLowerCase();
     return (results?.results || []).filter((candidate) => {
+      const skillText = [
+        ...candidate.skills_matched,
+        ...candidate.skills_missing,
+        ...candidate.technical_skills,
+        ...candidate.soft_skills,
+        ...candidate.tools,
+      ].join(" ");
       const matchesDecision = decision === "All" || candidate.decision === decision;
       const matchesSearch =
         !query ||
         candidate.name.toLowerCase().includes(query) ||
         candidate.filename.toLowerCase().includes(query) ||
-        candidate.skills_matched.join(" ").toLowerCase().includes(query);
+        skillText.toLowerCase().includes(query);
       return matchesDecision && matchesSearch;
     });
   }, [results, search, decision]);
 
+  const dashboard = useMemo(() => buildDashboard(results, stats, uploaded.length), [results, stats, uploaded.length]);
+  const analytics = useMemo(() => buildAnalytics(results?.results || []), [results]);
+
+  function showToast(type: ToastState["type"], message: string) {
+    setToast({ type, message });
+    window.setTimeout(() => setToast(null), 4200);
+  }
+
+  function setAcceptedFiles(nextFiles: File[]) {
+    const accepted = nextFiles.filter((file) => /\.(pdf|docx)$/i.test(file.name));
+    setFiles(accepted);
+    if (accepted.length !== nextFiles.length) {
+      showToast("error", "Only PDF and DOCX resumes are supported.");
+    }
+  }
+
   function onFileChange(event: ChangeEvent<HTMLInputElement>) {
-    setFiles(Array.from(event.target.files || []));
+    setAcceptedFiles(Array.from(event.target.files || []));
+  }
+
+  function onDrop(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    setDragActive(false);
+    setAcceptedFiles(Array.from(event.dataTransfer.files || []));
   }
 
   async function handleUpload() {
     if (!files.length) {
-      setError("Choose at least one PDF or DOCX resume.");
+      showToast("error", "Choose at least one PDF or DOCX resume.");
       return;
     }
-    setError("");
-    setNotice("");
+
     setLoading("upload");
+    setUploadProgress(12);
+    const progress = window.setInterval(() => {
+      setUploadProgress((value) => Math.min(value + 13, 92));
+    }, 300);
+
     try {
       const response = await uploadResumes(files, adminToken);
       setUploaded(response);
+      setUploadProgress(100);
+      showToast("success", `${response.length} resume${response.length === 1 ? "" : "s"} uploaded successfully.`);
       await refreshStats();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed.");
+      showToast("error", err instanceof Error ? err.message : "Upload failed.");
     } finally {
+      window.clearInterval(progress);
       setLoading(null);
+      window.setTimeout(() => setUploadProgress(0), 900);
     }
   }
 
   async function handleAnalyze() {
-    setError("");
-    setNotice("");
     setLoading("analyze");
     try {
       const response = await analyze(jobDescription, useLlm, adminToken);
       setResults(response);
       setSelectedId(response.results[0]?.id ?? null);
+      showToast("success", "ATS analysis complete. Candidates are ranked by match quality.");
       await refreshStats();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Analysis failed.");
+      showToast("error", err instanceof Error ? err.message : "Analysis failed.");
     } finally {
       setLoading(null);
     }
   }
 
   async function handleCsvDownload() {
-    setError("");
-    setNotice("");
     setLoading("csv");
     try {
       await downloadResultsCsv(adminToken);
+      showToast("success", "CSV report downloaded.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "CSV export failed.");
+      showToast("error", err instanceof Error ? err.message : "CSV export failed.");
     } finally {
       setLoading(null);
     }
   }
 
   async function handleEmailShortlist() {
-    setError("");
-    setNotice("");
     setLoading("email");
     try {
       const response = await sendShortlistEmail(emailRecipient, results?.run_id ?? null, adminToken);
-      setNotice(`${response.message} Candidates: ${response.candidates.join(", ")}`);
+      showToast("success", `${response.message} Candidates: ${response.candidates.join(", ")}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Shortlist email failed.");
+      showToast("error", err instanceof Error ? err.message : "Shortlist email failed.");
     } finally {
       setLoading(null);
     }
@@ -154,230 +217,268 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-[#eef1f5]">
-      <header className="border-b border-line bg-white">
-        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-5 py-5 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-ink">AI Resume Screening</h1>
-            <p className="mt-1 text-sm text-slate-600">Batch-rank candidates against a role with explainable scoring.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleCsvDownload}
-              disabled={!results || loading !== null}
-              className={`focus-ring inline-flex h-10 items-center gap-2 border px-3 text-sm font-medium ${
-                results ? "border-line bg-white text-ink hover:border-accent" : "pointer-events-none border-slate-200 bg-slate-100 text-slate-400"
-              }`}
-              style={{ borderRadius: 8 }}
-            >
-              {loading === "csv" ? <Loader2 size={17} className="animate-spin" aria-hidden /> : <ArrowDownToLine size={17} aria-hidden />}
-              CSV
-            </button>
-            <button
-              type="button"
-              onClick={handleAnalyze}
-              disabled={loading !== null}
-              className="focus-ring inline-flex h-10 items-center gap-2 bg-accent px-4 text-sm font-semibold text-white disabled:opacity-60"
-              style={{ borderRadius: 8 }}
-            >
-              {loading === "analyze" ? <Loader2 size={17} className="animate-spin" aria-hidden /> : <SlidersHorizontal size={17} aria-hidden />}
-              Analyze
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <div className="mx-auto grid max-w-7xl gap-5 px-5 py-5 lg:grid-cols-[390px_minmax(0,1fr)]">
-        <section className="space-y-5">
-          <div className="border border-line bg-white p-4 shadow-sm" style={{ borderRadius: 8 }}>
-            <div className="mb-3 flex items-center gap-2">
-              <ShieldCheck size={18} className="text-accent" aria-hidden />
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Admin</h2>
-            </div>
-            <input
-              value={adminToken}
-              onChange={(event) => setAdminToken(event.target.value)}
-              placeholder="Admin token"
-              type="password"
-              className="focus-ring h-10 w-full border border-line px-3 text-sm"
-              style={{ borderRadius: 8 }}
-            />
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              <Metric label="Resumes" value={(stats?.resumes ?? uploaded.length).toString()} />
-              <Metric label="Runs" value={(stats?.screening_runs ?? results?.run_id ?? 0).toString()} />
-              <Metric label="Selected" value={(stats?.selected ?? results?.results.filter((item) => item.decision === "Selected").length ?? 0).toString()} />
-            </div>
-            <button
-              type="button"
-              onClick={async () => {
-                setLoading("stats");
-                await refreshStats();
-                setLoading(null);
-              }}
-              disabled={loading !== null}
-              className="focus-ring mt-3 inline-flex h-10 w-full items-center justify-center gap-2 border border-line bg-white text-sm font-semibold text-ink hover:border-accent disabled:opacity-60"
-              style={{ borderRadius: 8 }}
-            >
-              {loading === "stats" ? <Loader2 size={17} className="animate-spin" aria-hidden /> : <ShieldCheck size={17} aria-hidden />}
-              Refresh stats
-            </button>
-          </div>
-
-          <div className="border border-line bg-white p-4 shadow-sm" style={{ borderRadius: 8 }}>
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Resumes</h2>
-              <span className="text-sm text-slate-500">{uploaded.length ? `${uploaded.length} uploaded` : "PDF or DOCX"}</span>
-            </div>
-            <label className="focus-ring flex min-h-28 cursor-pointer flex-col items-center justify-center border border-dashed border-slate-300 bg-panel px-4 py-5 text-center" style={{ borderRadius: 8 }}>
-              <Upload size={24} className="text-accent" aria-hidden />
-              <span className="mt-2 text-sm font-medium text-ink">{files.length ? `${files.length} file(s) selected` : "Choose resumes"}</span>
-              <span className="mt-1 text-xs text-slate-500">Batch upload is supported</span>
-              <input className="sr-only" type="file" multiple accept=".pdf,.docx" onChange={onFileChange} />
-            </label>
-            <button
-              type="button"
-              onClick={handleUpload}
-              disabled={loading !== null}
-              className="focus-ring mt-3 inline-flex h-10 w-full items-center justify-center gap-2 border border-line bg-white text-sm font-semibold text-ink hover:border-accent disabled:opacity-60"
-              style={{ borderRadius: 8 }}
-            >
-              {loading === "upload" ? <Loader2 size={17} className="animate-spin" aria-hidden /> : <FileText size={17} aria-hidden />}
-              Upload resumes
-            </button>
-            {uploaded.length > 0 && (
-              <div className="mt-3 space-y-2">
-                {uploaded.map((resume) => (
-                  <div key={resume.id} className="flex items-center justify-between gap-3 border border-line px-3 py-2 text-sm" style={{ borderRadius: 6 }}>
-                    <span className="truncate font-medium text-ink">{resume.candidate_name}</span>
-                    <span className="shrink-0 text-xs text-slate-500">{resume.characters.toLocaleString()} chars</span>
-                  </div>
-                ))}
+    <main className={`${darkMode ? "dark" : ""} min-h-screen bg-slate-100 text-ink transition dark:bg-slate-950 dark:text-white`}>
+      <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.18),transparent_34%),linear-gradient(180deg,#f8fafc_0%,#eef2f7_44%,#f8fafc_100%)] dark:bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.22),transparent_32%),linear-gradient(180deg,#020617_0%,#0f172a_48%,#020617_100%)]">
+        <header className="sticky top-0 z-30 border-b border-white/40 bg-white/75 backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/75">
+          <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="grid h-10 w-10 shrink-0 place-items-center bg-accent text-white shadow-sm" style={{ borderRadius: 8 }}>
+                <BrainCircuit size={22} aria-hidden />
               </div>
-            )}
-          </div>
-
-          <div className="border border-line bg-white p-4 shadow-sm" style={{ borderRadius: 8 }}>
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Job Description</h2>
-              <label className="flex items-center gap-2 text-sm text-slate-600">
-                <input type="checkbox" checked={useLlm} onChange={(event) => setUseLlm(event.target.checked)} />
-                LLM
-              </label>
+              <div className="min-w-0">
+                <p className="truncate text-base font-semibold">{productName}</p>
+                <p className="hidden text-xs text-slate-500 dark:text-slate-400 sm:block">Recruiter dashboard for ATS scoring, ranking, and skill intelligence</p>
+              </div>
             </div>
-            <textarea
-              value={jobDescription}
-              onChange={(event) => setJobDescription(event.target.value)}
-              className="focus-ring min-h-80 w-full resize-y border border-line bg-white p-3 text-sm leading-6 text-ink"
-              style={{ borderRadius: 8 }}
-            />
-          </div>
-
-          <div className="border border-line bg-white p-4 shadow-sm" style={{ borderRadius: 8 }}>
-            <div className="mb-3 flex items-center gap-2">
-              <Mail size={18} className="text-accent" aria-hidden />
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Shortlist</h2>
+            <div className="flex items-center gap-2">
+              <IconButton label="Toggle dark mode" onClick={() => setDarkMode((value) => !value)}>
+                {darkMode ? <Sun size={18} aria-hidden /> : <Moon size={18} aria-hidden />}
+              </IconButton>
+              <button
+                type="button"
+                onClick={handleCsvDownload}
+                disabled={!results || loading !== null}
+                className="focus-ring hidden h-10 items-center gap-2 border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-accent hover:text-accent disabled:pointer-events-none disabled:opacity-45 dark:border-white/10 dark:bg-white/10 dark:text-slate-100 sm:inline-flex"
+                style={{ borderRadius: 8 }}
+              >
+                {loading === "csv" ? <Loader2 size={17} className="animate-spin" aria-hidden /> : <Download size={17} aria-hidden />}
+                CSV
+              </button>
+              <button
+                type="button"
+                onClick={handleAnalyze}
+                disabled={loading !== null}
+                className="focus-ring inline-flex h-10 items-center gap-2 bg-accent px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60"
+                style={{ borderRadius: 8 }}
+              >
+                {loading === "analyze" ? <Loader2 size={17} className="animate-spin" aria-hidden /> : <Sparkles size={17} aria-hidden />}
+                Analyze
+              </button>
             </div>
-            <input
-              value={emailRecipient}
-              onChange={(event) => setEmailRecipient(event.target.value)}
-              placeholder="Recipient email"
-              type="email"
-              className="focus-ring h-10 w-full border border-line px-3 text-sm"
-              style={{ borderRadius: 8 }}
-            />
-            <button
-              type="button"
-              onClick={handleEmailShortlist}
-              disabled={!results || loading !== null}
-              className="focus-ring mt-3 inline-flex h-10 w-full items-center justify-center gap-2 border border-line bg-white text-sm font-semibold text-ink hover:border-accent disabled:opacity-60"
-              style={{ borderRadius: 8 }}
-            >
-              {loading === "email" ? <Loader2 size={17} className="animate-spin" aria-hidden /> : <Mail size={17} aria-hidden />}
-              Email selected
-            </button>
+          </div>
+        </header>
+
+        <section className="border-b border-white/50 bg-gradient-to-br from-blue-700 via-cyan-700 to-slate-950 text-white dark:border-white/10">
+          <div className="mx-auto grid max-w-7xl gap-6 px-5 py-8 lg:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)] lg:items-end">
+            <div>
+              <div className="inline-flex items-center gap-2 border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide backdrop-blur" style={{ borderRadius: 999 }}>
+                <ShieldCheck size={14} aria-hidden />
+                Production-ready ATS intelligence
+              </div>
+              <h1 className="mt-4 max-w-3xl text-3xl font-semibold tracking-tight sm:text-4xl lg:text-5xl">{productName}</h1>
+              <p className="mt-4 max-w-2xl text-sm leading-6 text-blue-50 sm:text-base">
+                Upload resumes, paste a job description, and get ranked candidates with ATS scores, skill gaps, extraction, analytics, and recruiter-ready summaries.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-2">
+              <HeroMetric label="Total resumes" value={dashboard.totalResumes} />
+              <HeroMetric label="Shortlisted" value={dashboard.shortlisted} />
+              <HeroMetric label="Rejected" value={dashboard.rejected} />
+              <HeroMetric label="Avg ATS" value={`${dashboard.averageScore}%`} />
+            </div>
           </div>
         </section>
 
-        <section className="min-w-0 space-y-5">
-          {error && (
-            <div className="border border-danger bg-red-50 px-4 py-3 text-sm font-medium text-danger" style={{ borderRadius: 8 }}>
-              {error}
-            </div>
-          )}
-          {notice && (
-            <div className="border border-mint bg-emerald-50 px-4 py-3 text-sm font-medium text-mint" style={{ borderRadius: 8 }}>
-              {notice}
-            </div>
-          )}
+        <div className="mx-auto grid max-w-7xl gap-5 px-5 py-6 lg:grid-cols-[400px_minmax(0,1fr)]">
+          <section className="space-y-5">
+            <Panel>
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <SectionTitle icon={<UploadCloud size={18} aria-hidden />} title="Resume Upload" />
+                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">PDF / DOCX</span>
+              </div>
+              <label
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  setDragActive(true);
+                }}
+                onDragLeave={() => setDragActive(false)}
+                onDrop={onDrop}
+                className={`focus-ring flex min-h-36 cursor-pointer flex-col items-center justify-center border border-dashed px-5 py-6 text-center transition ${
+                  dragActive
+                    ? "border-accent bg-blue-50 text-accent dark:bg-blue-950/40"
+                    : "border-slate-300 bg-slate-50 text-slate-600 hover:border-accent hover:bg-blue-50/60 dark:border-white/10 dark:bg-white/5 dark:text-slate-300"
+                }`}
+                style={{ borderRadius: 8 }}
+              >
+                <UploadCloud size={30} className="text-accent" aria-hidden />
+                <span className="mt-3 text-sm font-semibold text-ink dark:text-white">
+                  {files.length ? `${files.length} file${files.length === 1 ? "" : "s"} ready` : "Drag resumes here or browse"}
+                </span>
+                <span className="mt-1 text-xs text-slate-500 dark:text-slate-400">Batch upload and ranking are supported</span>
+                <input className="sr-only" type="file" multiple accept=".pdf,.docx" onChange={onFileChange} />
+              </label>
 
-          <div className="border border-line bg-white p-4 shadow-sm" style={{ borderRadius: 8 }}>
-            <div className="grid gap-3 md:grid-cols-[1fr_190px]">
-              <label className="relative block">
-                <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} aria-hidden />
+              {files.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {files.slice(0, 4).map((file) => (
+                    <div key={file.name} className="flex items-center justify-between gap-3 bg-slate-50 px-3 py-2 text-sm dark:bg-white/5" style={{ borderRadius: 6 }}>
+                      <span className="truncate font-medium">{file.name}</span>
+                      <span className="shrink-0 text-xs text-slate-500">{formatBytes(file.size)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {uploadProgress > 0 && (
+                <div className="mt-4">
+                  <div className="mb-1 flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+                    <span>Upload progress</span>
+                    <span>{uploadProgress}%</span>
+                  </div>
+                  <div className="h-2 overflow-hidden bg-slate-100 dark:bg-white/10" style={{ borderRadius: 999 }}>
+                    <div className="h-full bg-accent transition-all" style={{ width: `${uploadProgress}%` }} />
+                  </div>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={handleUpload}
+                disabled={loading !== null}
+                className="focus-ring mt-4 inline-flex h-11 w-full items-center justify-center gap-2 bg-slate-950 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:opacity-60 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-100"
+                style={{ borderRadius: 8 }}
+              >
+                {loading === "upload" ? <Loader2 size={17} className="animate-spin" aria-hidden /> : <FileText size={17} aria-hidden />}
+                Upload resumes
+              </button>
+            </Panel>
+
+            <Panel>
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <SectionTitle icon={<FileText size={18} aria-hidden />} title="Job Description Matching" />
+                <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-300">
+                  <input type="checkbox" checked={useLlm} onChange={(event) => setUseLlm(event.target.checked)} />
+                  AI review
+                </label>
+              </div>
+              <textarea
+                value={jobDescription}
+                onChange={(event) => setJobDescription(event.target.value)}
+                className="focus-ring min-h-80 w-full resize-y border border-slate-200 bg-white p-3 text-sm leading-6 text-ink shadow-inner dark:border-white/10 dark:bg-slate-950/60 dark:text-slate-100"
+                style={{ borderRadius: 8 }}
+              />
+            </Panel>
+
+            <Panel>
+              <SectionTitle icon={<ShieldCheck size={18} aria-hidden />} title="Admin & Shortlist" />
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
                 <input
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search candidates, files, or matched skills"
-                  className="focus-ring h-11 w-full border border-line bg-white pl-10 pr-3 text-sm"
+                  value={adminToken}
+                  onChange={(event) => setAdminToken(event.target.value)}
+                  placeholder="Admin token"
+                  type="password"
+                  className="focus-ring h-11 w-full border border-slate-200 bg-white px-3 text-sm dark:border-white/10 dark:bg-slate-950/60"
                   style={{ borderRadius: 8 }}
                 />
-              </label>
-              <label className="relative block">
-                <Filter className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} aria-hidden />
-                <select
-                  value={decision}
-                  onChange={(event) => setDecision(event.target.value as (typeof decisions)[number])}
-                  className="focus-ring h-11 w-full appearance-none border border-line bg-white pl-10 pr-3 text-sm"
+                <input
+                  value={emailRecipient}
+                  onChange={(event) => setEmailRecipient(event.target.value)}
+                  placeholder="Recipient email"
+                  type="email"
+                  className="focus-ring h-11 w-full border border-slate-200 bg-white px-3 text-sm dark:border-white/10 dark:bg-slate-950/60"
+                  style={{ borderRadius: 8 }}
+                />
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setLoading("stats");
+                    await refreshStats();
+                    setLoading(null);
+                  }}
+                  disabled={loading !== null}
+                  className="focus-ring inline-flex h-10 items-center justify-center gap-2 border border-slate-200 bg-white text-sm font-semibold transition hover:border-accent hover:text-accent disabled:opacity-60 dark:border-white/10 dark:bg-white/10"
                   style={{ borderRadius: 8 }}
                 >
-                  {decisions.map((item) => (
-                    <option key={item}>{item}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          </div>
-
-          {results ? (
-            <div className="grid gap-5 xl:grid-cols-[420px_minmax(0,1fr)]">
-              <div className="space-y-3">
-                {filteredResults.map((candidate) => (
-                  <CandidateCard
-                    key={candidate.id}
-                    candidate={candidate}
-                    active={selected?.id === candidate.id}
-                    onSelect={() => setSelectedId(candidate.id)}
-                  />
-                ))}
-                {!filteredResults.length && (
-                  <div className="border border-line bg-white p-6 text-sm text-slate-600" style={{ borderRadius: 8 }}>
-                    No candidates match the current filters.
-                  </div>
-                )}
+                  {loading === "stats" ? <Loader2 size={16} className="animate-spin" aria-hidden /> : <BarChart3 size={16} aria-hidden />}
+                  Stats
+                </button>
+                <button
+                  type="button"
+                  onClick={handleEmailShortlist}
+                  disabled={!results || loading !== null}
+                  className="focus-ring inline-flex h-10 items-center justify-center gap-2 border border-slate-200 bg-white text-sm font-semibold transition hover:border-accent hover:text-accent disabled:opacity-60 dark:border-white/10 dark:bg-white/10"
+                  style={{ borderRadius: 8 }}
+                >
+                  {loading === "email" ? <Loader2 size={16} className="animate-spin" aria-hidden /> : <Mail size={16} aria-hidden />}
+                  Email
+                </button>
               </div>
-              {selected && <CandidateDetail candidate={selected} jobAnalysis={results.job_analysis} />}
+            </Panel>
+          </section>
+
+          <section className="min-w-0 space-y-5">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <DashboardCard icon={<Users size={19} aria-hidden />} label="Total resumes" value={dashboard.totalResumes} />
+              <DashboardCard icon={<CheckCircle2 size={19} aria-hidden />} label="Shortlisted" value={dashboard.shortlisted} tone="success" />
+              <DashboardCard icon={<CircleAlert size={19} aria-hidden />} label="Rejected" value={dashboard.rejected} tone="danger" />
+              <DashboardCard icon={<BarChart3 size={19} aria-hidden />} label="Average ATS score" value={`${dashboard.averageScore}%`} />
             </div>
-          ) : (
-            <EmptyState />
-          )}
-        </section>
+
+            <Panel>
+              <div className="grid gap-3 md:grid-cols-[1fr_190px]">
+                <label className="relative block">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} aria-hidden />
+                  <input
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Search candidates, files, or skills"
+                    className="focus-ring h-11 w-full border border-slate-200 bg-white pl-10 pr-3 text-sm dark:border-white/10 dark:bg-slate-950/60"
+                    style={{ borderRadius: 8 }}
+                  />
+                </label>
+                <label className="relative block">
+                  <Filter className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} aria-hidden />
+                  <select
+                    value={decision}
+                    onChange={(event) => setDecision(event.target.value as (typeof decisions)[number])}
+                    className="focus-ring h-11 w-full appearance-none border border-slate-200 bg-white pl-10 pr-3 text-sm dark:border-white/10 dark:bg-slate-950/60"
+                    style={{ borderRadius: 8 }}
+                  >
+                    {decisions.map((item) => (
+                      <option key={item}>{item}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </Panel>
+
+            {results ? (
+              <>
+                <AnalyticsGrid analytics={analytics} />
+                <div className="grid gap-5 xl:grid-cols-[420px_minmax(0,1fr)]">
+                  <div className="space-y-3">
+                    {filteredResults.map((candidate, index) => {
+                      const originalRank = results.results.findIndex((item) => item.id === candidate.id);
+                      return (
+                        <CandidateCard
+                          key={candidate.id}
+                          candidate={candidate}
+                          rank={originalRank >= 0 ? originalRank + 1 : index + 1}
+                          active={selected?.id === candidate.id}
+                          onSelect={() => setSelectedId(candidate.id)}
+                        />
+                      );
+                    })}
+                    {!filteredResults.length && <SmallEmptyState message="No candidates match the current filters." />}
+                  </div>
+                  {selected && <CandidateDetail candidate={selected} jobAnalysis={results.job_analysis} />}
+                </div>
+              </>
+            ) : (
+              <EmptyState />
+            )}
+          </section>
+        </div>
+
+        <footer className="border-t border-slate-200 bg-white/70 px-5 py-6 text-center text-sm text-slate-500 backdrop-blur dark:border-white/10 dark:bg-slate-950/70 dark:text-slate-400">
+          {productName} - Built for explainable resume screening, ATS analytics, and recruiter productivity.
+        </footer>
+
+        {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
       </div>
     </main>
-  );
-}
-
-function EmptyState() {
-  return (
-    <div className="grid min-h-[420px] place-items-center border border-line bg-white p-8 text-center shadow-sm" style={{ borderRadius: 8 }}>
-      <div>
-        <FileText className="mx-auto text-accent" size={36} aria-hidden />
-        <h2 className="mt-4 text-lg font-semibold text-ink">Upload resumes and run analysis</h2>
-        <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600">
-          Results will appear as ranked cards with score breakdowns, matched skills, missing skills, strengths, weaknesses, and recruiter-ready summaries.
-        </p>
-      </div>
-    </div>
   );
 }
 
@@ -388,16 +489,18 @@ function CandidateDetail({
   candidate: CandidateResult;
   jobAnalysis: AnalyzeResponse["job_analysis"];
 }) {
+  const allSkills = [...candidate.technical_skills, ...candidate.tools, ...candidate.soft_skills];
+
   return (
-    <aside className="border border-line bg-white p-5 shadow-sm" style={{ borderRadius: 8 }}>
-      <div className="flex flex-col gap-4 border-b border-line pb-4 md:flex-row md:items-start md:justify-between">
+    <aside className="border border-white/70 bg-white/85 p-5 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/85" style={{ borderRadius: 8 }}>
+      <div className="flex flex-col gap-4 border-b border-slate-200 pb-4 md:flex-row md:items-start md:justify-between dark:border-white/10">
         <div className="min-w-0">
-          <h2 className="truncate text-xl font-semibold text-ink">{candidate.name}</h2>
-          <p className="mt-1 truncate text-sm text-slate-500">{candidate.filename}</p>
+          <h2 className="truncate text-xl font-semibold">{candidate.name}</h2>
+          <p className="mt-1 truncate text-sm text-slate-500 dark:text-slate-400">{candidate.filename}</p>
         </div>
         <div className="shrink-0 text-left md:text-right">
-          <div className="text-4xl font-semibold text-ink">{Math.round(candidate.score)}</div>
-          <p className="text-sm text-slate-500">Final score</p>
+          <div className="text-4xl font-semibold">{Math.round(candidate.score)}%</div>
+          <p className="text-sm text-slate-500 dark:text-slate-400">ATS match</p>
         </div>
       </div>
 
@@ -408,22 +511,31 @@ function CandidateDetail({
       </div>
 
       <section className="mt-6">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Explanation</h3>
-        <p className="mt-2 text-sm leading-6 text-ink">{candidate.summary}</p>
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">ATS Breakdown</h3>
+        <div className="mt-3 space-y-3">
+          {Object.entries(candidate.ats_breakdown).map(([label, value]) => (
+            <ScoreRow key={label} label={humanize(label)} value={value} />
+          ))}
+        </div>
+      </section>
+
+      <section className="mt-6">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Recruiter Summary</h3>
+        <p className="mt-2 text-sm leading-6">{candidate.summary}</p>
       </section>
 
       <div className="mt-6 grid gap-5 lg:grid-cols-2">
         <ListBlock title="Matched Skills" items={candidate.skills_matched} tone="match" />
         <ListBlock title="Missing Skills" items={candidate.skills_missing} tone="missing" />
-        <ListBlock title="Strengths" items={candidate.strengths} />
-        <ListBlock title="Weaknesses" items={candidate.weaknesses} />
+        <ListBlock title="AI Suggestions" items={candidate.recommended_improvements} />
+        <ListBlock title="Extracted Skills" items={allSkills} />
       </div>
 
       <section className="mt-6">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Job Signals</h3>
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Job Signals</h3>
         <div className="mt-3 flex flex-wrap gap-2">
           {[...jobAnalysis.required_skills, ...jobAnalysis.preferred_skills, ...candidate.highlighted_terms].slice(0, 28).map((term) => (
-            <span key={term} className="border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-medium text-accent" style={{ borderRadius: 6 }}>
+            <span key={term} className="border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-medium text-accent dark:border-blue-400/30 dark:bg-blue-400/10 dark:text-blue-200" style={{ borderRadius: 999 }}>
               {term}
             </span>
           ))}
@@ -431,30 +543,180 @@ function CandidateDetail({
       </section>
 
       <section className="mt-6">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Highlighted Resume</h3>
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Resume Preview</h3>
         <ResumePreview text={candidate.resume_text} terms={[...candidate.skills_matched, ...candidate.highlighted_terms]} />
       </section>
     </aside>
   );
 }
 
+function AnalyticsGrid({ analytics }: { analytics: ReturnType<typeof buildAnalytics> }) {
+  return (
+    <div className="grid gap-5 xl:grid-cols-3">
+      <ChartPanel title="ATS Score Distribution">
+        {analytics.distribution.length ? (
+          <ResponsiveContainer width="100%" height={220}>
+            <PieChart>
+              <Pie data={analytics.distribution} dataKey="value" nameKey="name" innerRadius={52} outerRadius={78} paddingAngle={3}>
+                {analytics.distribution.map((entry, index) => (
+                  <Cell key={entry.name} fill={chartColors[index % chartColors.length]} />
+                ))}
+              </Pie>
+              <Tooltip />
+            </PieChart>
+          </ResponsiveContainer>
+        ) : (
+          <SmallEmptyState message="Run analysis to see score distribution." />
+        )}
+      </ChartPanel>
+      <ChartPanel title="Skill Frequency">
+        {analytics.skills.length ? (
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={analytics.skills}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+              <Tooltip />
+              <Bar dataKey="value" fill="#0F766E" radius={[6, 6, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        ) : (
+          <SmallEmptyState message="Matched skills will appear here." />
+        )}
+      </ChartPanel>
+      <ChartPanel title="Candidate Ranking">
+        {analytics.ranking.length ? (
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={analytics.ranking} layout="vertical" margin={{ left: 14 }}>
+              <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+              <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 11 }} />
+              <YAxis type="category" dataKey="name" width={74} tick={{ fontSize: 11 }} />
+              <Tooltip />
+              <Bar dataKey="score" fill="#2563EB" radius={[0, 6, 6, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        ) : (
+          <SmallEmptyState message="Candidate rankings will appear here." />
+        )}
+      </ChartPanel>
+    </div>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="grid min-h-[440px] place-items-center border border-white/70 bg-white/80 p-8 text-center shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/80" style={{ borderRadius: 8 }}>
+      <div>
+        <div className="mx-auto grid h-14 w-14 place-items-center bg-blue-50 text-accent dark:bg-blue-400/10" style={{ borderRadius: 8 }}>
+          <FileText size={30} aria-hidden />
+        </div>
+        <h2 className="mt-4 text-lg font-semibold">Upload resumes and run ATS analysis</h2>
+        <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600 dark:text-slate-300">
+          Ranked candidate cards, missing skills, score breakdowns, analytics, and resume previews will appear here.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function Panel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="border border-white/70 bg-white/85 p-4 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/85" style={{ borderRadius: 8 }}>
+      {children}
+    </div>
+  );
+}
+
+function ChartPanel({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <Panel>
+      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{title}</h2>
+      {children}
+    </Panel>
+  );
+}
+
+function DashboardCard({ icon, label, value, tone = "default" }: { icon: React.ReactNode; label: string; value: string | number; tone?: "default" | "success" | "danger" }) {
+  const toneClass = tone === "success" ? "text-mint bg-emerald-50 dark:bg-emerald-400/10" : tone === "danger" ? "text-danger bg-red-50 dark:bg-red-400/10" : "text-accent bg-blue-50 dark:bg-blue-400/10";
+  return (
+    <Panel>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</p>
+          <p className="mt-2 text-2xl font-semibold">{value}</p>
+        </div>
+        <div className={`grid h-10 w-10 place-items-center ${toneClass}`} style={{ borderRadius: 8 }}>
+          {icon}
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function HeroMetric({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="border border-white/20 bg-white/10 p-4 shadow-sm backdrop-blur" style={{ borderRadius: 8 }}>
+      <p className="text-xs font-semibold uppercase tracking-wide text-blue-100">{label}</p>
+      <p className="mt-2 text-2xl font-semibold">{value}</p>
+    </div>
+  );
+}
+
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border border-line bg-panel p-3" style={{ borderRadius: 8 }}>
-      <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
-      <div className="mt-1 truncate text-lg font-semibold text-ink">{value}</div>
+    <div className="border border-slate-200 bg-slate-50 p-3 dark:border-white/10 dark:bg-white/5" style={{ borderRadius: 8 }}>
+      <div className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</div>
+      <div className="mt-1 truncate text-lg font-semibold">{value}</div>
+    </div>
+  );
+}
+
+function SectionTitle({ icon, title }: { icon: React.ReactNode; title: string }) {
+  return (
+    <div className="flex items-center gap-2 text-slate-700 dark:text-slate-100">
+      <span className="text-accent">{icon}</span>
+      <h2 className="text-sm font-semibold uppercase tracking-wide">{title}</h2>
+    </div>
+  );
+}
+
+function IconButton({ label, children, onClick }: { label: string; children: React.ReactNode; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className="focus-ring grid h-10 w-10 place-items-center border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-accent hover:text-accent dark:border-white/10 dark:bg-white/10 dark:text-slate-100"
+      style={{ borderRadius: 8 }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function ScoreRow({ label, value }: { label: string; value: number }) {
+  return (
+    <div>
+      <div className="mb-1 flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-slate-400">
+        <span>{label}</span>
+        <span>{Math.round(value)}%</span>
+      </div>
+      <div className="h-2 overflow-hidden bg-slate-100 dark:bg-white/10" style={{ borderRadius: 999 }}>
+        <div className="h-full bg-accent" style={{ width: `${Math.min(100, Math.max(0, value))}%` }} />
+      </div>
     </div>
   );
 }
 
 function ListBlock({ title, items, tone }: { title: string; items: string[]; tone?: "match" | "missing" }) {
-  const color = tone === "match" ? "text-mint" : tone === "missing" ? "text-danger" : "text-ink";
+  const color = tone === "match" ? "text-mint" : tone === "missing" ? "text-danger" : "text-slate-700 dark:text-slate-200";
   return (
     <section>
-      <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600">{title}</h3>
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{title}</h3>
       <ul className="mt-2 space-y-2">
         {(items.length ? items : ["None found"]).map((item) => (
-          <li key={item} className={`border border-line bg-panel px-3 py-2 text-sm leading-5 ${color}`} style={{ borderRadius: 6 }}>
+          <li key={item} className={`border border-slate-200 bg-slate-50 px-3 py-2 text-sm leading-5 dark:border-white/10 dark:bg-white/5 ${color}`} style={{ borderRadius: 6 }}>
             {item}
           </li>
         ))}
@@ -469,7 +731,7 @@ function ResumePreview({ text, terms }: { text: string; terms: string[] }) {
   const parts = pattern ? text.split(new RegExp(`(${pattern})`, "gi")) : [text];
 
   return (
-    <div className="mt-3 max-h-96 overflow-auto border border-line bg-panel p-4 text-sm leading-7 text-ink" style={{ borderRadius: 8 }}>
+    <div className="mt-3 max-h-96 overflow-auto border border-slate-200 bg-slate-50 p-4 text-sm leading-7 dark:border-white/10 dark:bg-slate-950/60" style={{ borderRadius: 8 }}>
       {parts.map((part, index) => {
         const highlighted = uniqueTerms.some((term) => term.toLowerCase() === part.toLowerCase());
         return highlighted ? (
@@ -482,6 +744,74 @@ function ResumePreview({ text, terms }: { text: string; terms: string[] }) {
       })}
     </div>
   );
+}
+
+function Toast({ toast, onClose }: { toast: ToastState; onClose: () => void }) {
+  const tone = toast.type === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : toast.type === "error" ? "border-red-200 bg-red-50 text-red-800" : "border-blue-200 bg-blue-50 text-blue-800";
+  return (
+    <div className={`fixed right-4 top-20 z-50 flex max-w-md items-start gap-3 border px-4 py-3 text-sm font-medium shadow-lg ${tone}`} style={{ borderRadius: 8 }}>
+      <span className="leading-6">{toast.message}</span>
+      <button type="button" aria-label="Close notification" onClick={onClose} className="shrink-0 pt-0.5">
+        <X size={16} aria-hidden />
+      </button>
+    </div>
+  );
+}
+
+function SmallEmptyState({ message }: { message: string }) {
+  return (
+    <div className="grid min-h-36 place-items-center border border-slate-200 bg-slate-50 p-5 text-center text-sm text-slate-500 dark:border-white/10 dark:bg-white/5 dark:text-slate-400" style={{ borderRadius: 8 }}>
+      {message}
+    </div>
+  );
+}
+
+function buildDashboard(results: AnalyzeResponse | null, stats: AdminStats | null, uploadedCount: number) {
+  const candidates = results?.results || [];
+  const averageFromResults = candidates.length ? Math.round(candidates.reduce((sum, item) => sum + item.score, 0) / candidates.length) : 0;
+  return {
+    totalResumes: stats?.resumes ?? Math.max(uploadedCount, candidates.length),
+    shortlisted: stats?.selected ?? candidates.filter((item) => item.decision === "Selected").length,
+    rejected: stats?.rejected ?? candidates.filter((item) => item.decision === "Rejected").length,
+    averageScore: Math.round(stats?.average_ats_score ?? averageFromResults),
+  };
+}
+
+function buildAnalytics(candidates: CandidateResult[]) {
+  const distribution = [
+    { name: "80-100", value: candidates.filter((item) => item.score >= 80).length },
+    { name: "60-79", value: candidates.filter((item) => item.score >= 60 && item.score < 80).length },
+    { name: "40-59", value: candidates.filter((item) => item.score >= 40 && item.score < 60).length },
+    { name: "0-39", value: candidates.filter((item) => item.score < 40).length },
+  ].filter((item) => item.value > 0);
+
+  const skillCounts = new Map<string, number>();
+  candidates.forEach((candidate) => {
+    [...candidate.skills_matched, ...candidate.technical_skills, ...candidate.tools].forEach((skill) => {
+      skillCounts.set(skill, (skillCounts.get(skill) || 0) + 1);
+    });
+  });
+  const skills = Array.from(skillCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 7)
+    .map(([name, value]) => ({ name, value }));
+
+  const ranking = candidates.slice(0, 5).map((candidate) => ({
+    name: candidate.name.split(" ")[0] || candidate.name,
+    score: Math.round(candidate.score),
+  }));
+
+  return { distribution, skills, ranking };
+}
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function humanize(value: string) {
+  return value.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function escapeRegExp(value: string) {

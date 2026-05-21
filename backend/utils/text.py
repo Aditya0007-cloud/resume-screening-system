@@ -21,6 +21,25 @@ SKILL_CATALOG = [
     "security", "oauth", "jwt", "microservices", "system design", "testing",
 ]
 
+TECHNICAL_SKILLS = {
+    "python", "java", "javascript", "typescript", "sql", "machine learning",
+    "deep learning", "nlp", "llm", "rag", "data engineering", "statistics",
+    "a/b testing", "security", "microservices", "system design", "testing",
+}
+
+SOFT_SKILLS = {
+    "leadership", "communication", "stakeholder management", "agile", "scrum",
+    "product",
+}
+
+TOOL_SKILLS = {
+    "react", "next.js", "node.js", "fastapi", "django", "flask", "postgresql",
+    "mysql", "sqlite", "mongodb", "aws", "azure", "gcp", "docker", "kubernetes",
+    "linux", "git", "ci/cd", "rest api", "graphql", "openai", "langchain",
+    "tensorflow", "pytorch", "scikit-learn", "pandas", "numpy", "spark", "etl",
+    "airflow", "dbt", "tableau", "power bi", "excel", "oauth", "jwt",
+}
+
 
 def normalize_text(text: str) -> str:
     text = text.replace("\x00", " ")
@@ -51,6 +70,15 @@ def extract_known_skills(text: str) -> list[str]:
         if re.search(pattern, lowered):
             found.append(skill)
     return sorted(set(found))
+
+
+def extract_skill_categories(text: str) -> dict[str, list[str]]:
+    skills = set(extract_known_skills(text))
+    return {
+        "technical": sorted(skills & TECHNICAL_SKILLS),
+        "soft": sorted(skills & SOFT_SKILLS),
+        "tools": sorted(skills & TOOL_SKILLS),
+    }
 
 
 def top_keywords(text: str, limit: int = 18) -> list[str]:

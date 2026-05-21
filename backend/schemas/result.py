@@ -37,6 +37,12 @@ class CandidateResult(BaseModel):
     decision: str
     highlighted_terms: list[str]
     resume_text: str
+    ats_breakdown: dict[str, float]
+    match_percentage: float
+    technical_skills: list[str]
+    soft_skills: list[str]
+    tools: list[str]
+    recommended_improvements: list[str]
 
 
 class AnalyzeResponse(BaseModel):
@@ -67,3 +73,4 @@ class AdminStats(BaseModel):
     selected: int
     maybe: int
     rejected: int
+    average_ats_score: float

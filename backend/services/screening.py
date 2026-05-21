@@ -3,6 +3,7 @@ import json
 from sqlalchemy.orm import Session
 
 from backend.models import Resume, ScreeningResult, ScreeningRun
+from backend.services.ats import evaluate_ats_profile
 from backend.services.job_description import analyze_job_description
 from backend.services.llm_evaluator import evaluate_with_openai
 from backend.services.matcher import baseline_scores, heuristic_llm_like_score, skill_gap
@@ -31,15 +32,16 @@ def run_screening(db: Session, job_description: str, use_llm: bool = True) -> Sc
     for resume, baseline in zip(resumes, baselines, strict=False):
         matched_required, missing_required = skill_gap(job_analysis["required_skills"], resume.text)
         matched_preferred, missing_preferred = skill_gap(job_analysis["preferred_skills"], resume.text)
+        ats_profile = evaluate_ats_profile(resume.text, job_description, job_analysis)
         llm_result = evaluate_with_openai(resume.text, job_description, job_analysis) if use_llm else None
 
         if llm_result:
             llm_score = clamp_score(float(llm_result["score"]))
-            score = clamp_score((baseline * 0.3) + (llm_score * 0.7))
-            skills_matched = sorted(set(llm_result["skills_matched"]) | set(matched_required) | set(matched_preferred))
-            skills_missing = sorted(set(llm_result["skills_missing"]) | set(missing_required))
+            score = clamp_score((ats_profile["ats_score"] * 0.55) + (llm_score * 0.35) + (baseline * 0.10))
+            skills_matched = sorted(set(llm_result["skills_matched"]) | set(ats_profile["matched_skills"]) | set(matched_required) | set(matched_preferred))
+            skills_missing = sorted(set(llm_result["skills_missing"]) | set(ats_profile["missing_skills"]) | set(missing_required))
             strengths = llm_result["strengths"]
-            weaknesses = llm_result["weaknesses"]
+            weaknesses = sorted(set(llm_result["weaknesses"] + ats_profile["recommended_improvements"]))
             summary = llm_result["summary"]
         else:
             llm_score = heuristic_llm_like_score(
@@ -50,12 +52,12 @@ def run_screening(db: Session, job_description: str, use_llm: bool = True) -> Sc
                 len(job_analysis["required_skills"]),
                 len(job_analysis["preferred_skills"]),
             )
-            score = clamp_score((baseline * 0.2) + (llm_score * 0.8))
-            skills_matched = sorted(set(matched_required + matched_preferred))
-            skills_missing = sorted(set(missing_required + missing_preferred))
+            score = clamp_score((ats_profile["ats_score"] * 0.75) + (llm_score * 0.15) + (baseline * 0.10))
+            skills_matched = sorted(set(ats_profile["matched_skills"] + matched_required + matched_preferred))
+            skills_missing = sorted(set(ats_profile["missing_skills"] + missing_required + missing_preferred))
             strengths = _strengths(skills_matched, resume.text)
-            weaknesses = _weaknesses(skills_missing)
-            summary = _summary(resume.candidate_name, skills_matched, skills_missing, baseline)
+            weaknesses = sorted(set(_weaknesses(skills_missing) + ats_profile["recommended_improvements"]))
+            summary = _summary(resume.candidate_name, skills_matched, skills_missing, ats_profile["ats_score"])
 
         result = ScreeningResult(
             run_id=run.id,
@@ -70,6 +72,11 @@ def run_screening(db: Session, job_description: str, use_llm: bool = True) -> Sc
             weaknesses=json.dumps(weaknesses),
             summary=summary,
             highlighted_terms=json.dumps(sorted(set(job_skills[:12] + job_analysis["keywords"][:8]))),
+            ats_breakdown=json.dumps(ats_profile["breakdown"]),
+            technical_skills=json.dumps(ats_profile["technical_skills"]),
+            soft_skills=json.dumps(ats_profile["soft_skills"]),
+            tools=json.dumps(ats_profile["tools"]),
+            recommended_improvements=json.dumps(ats_profile["recommended_improvements"]),
         )
         db.add(result)
 
@@ -105,6 +112,12 @@ def serialize_run(run: ScreeningRun) -> dict:
                 "decision": result.decision,
                 "highlighted_terms": json.loads(result.highlighted_terms),
                 "resume_text": result.resume.text[:12000],
+                "ats_breakdown": json.loads(result.ats_breakdown),
+                "match_percentage": result.score,
+                "technical_skills": json.loads(result.technical_skills),
+                "soft_skills": json.loads(result.soft_skills),
+                "tools": json.loads(result.tools),
+                "recommended_improvements": json.loads(result.recommended_improvements),
             }
             for result in sorted_results
         ],
@@ -136,9 +149,9 @@ def _weaknesses(missing: list[str]) -> list[str]:
     return ["No major required skill gaps detected by the baseline evaluator."]
 
 
-def _summary(name: str, matched: list[str], missing: list[str], baseline: float) -> str:
+def _summary(name: str, matched: list[str], missing: list[str], ats_score: float) -> str:
     if not matched:
-        return f"{name} has a weak keyword and skill match for this role. Baseline similarity is {baseline}."
+        return f"{name} has a weak keyword and skill match for this role. ATS compatibility is {ats_score}."
     if missing:
         return f"{name} matches {len(matched)} target skills but has gaps in {', '.join(missing[:4])}."
     return f"{name} is a strong match across the extracted role requirements."

@@ -174,4 +174,5 @@ def admin_stats(
         "selected": decision_counts.get("Selected", 0),
         "maybe": decision_counts.get("Maybe", 0),
         "rejected": decision_counts.get("Rejected", 0),
+        "average_ats_score": round(db.query(func.avg(ScreeningResult.score)).scalar() or 0, 1),
     }

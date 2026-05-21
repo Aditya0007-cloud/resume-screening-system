@@ -13,6 +13,12 @@ export type CandidateResult = {
   decision: "Selected" | "Maybe" | "Rejected";
   highlighted_terms: string[];
   resume_text: string;
+  ats_breakdown: Record<string, number>;
+  match_percentage: number;
+  technical_skills: string[];
+  soft_skills: string[];
+  tools: string[];
+  recommended_improvements: string[];
 };
 
 export type AdminStats = {
@@ -22,6 +28,7 @@ export type AdminStats = {
   selected: number;
   maybe: number;
   rejected: number;
+  average_ats_score: number;
 };
 
 export type AnalyzeResponse = {

@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    app_name: str = "AI Resume Screening & Ranking System"
+    app_name: str = "AI Resume Screening & ATS Analyzer"
     database_url: str = "sqlite:///./data/resume_screening.db"
     upload_dir: Path = Path("data/uploads")
     openai_api_key: str | None = None
