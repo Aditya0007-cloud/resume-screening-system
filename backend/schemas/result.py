@@ -24,6 +24,7 @@ class JobDescriptionAnalysis(BaseModel):
 
 class CandidateResult(BaseModel):
     id: int
+    resume_id: int
     name: str
     filename: str
     score: float

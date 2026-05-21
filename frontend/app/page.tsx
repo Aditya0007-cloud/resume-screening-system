@@ -1,12 +1,13 @@
 "use client";
 
-import { ChangeEvent, DragEvent, useMemo, useState } from "react";
+import { ChangeEvent, DragEvent, useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
   BrainCircuit,
   CheckCircle2,
   CircleAlert,
   Download,
+  Eye,
   FileText,
   Filter,
   Loader2,
@@ -37,8 +38,10 @@ import {
   analyze,
   AnalyzeResponse,
   CandidateResult,
+  downloadAtsReport,
   downloadResultsCsv,
   getAdminStats,
+  resumePreviewUrl,
   sendShortlistEmail,
   uploadResumes,
   UploadedResume,
@@ -89,6 +92,16 @@ export default function Home() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [dragActive, setDragActive] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
+  const [previewCandidate, setPreviewCandidate] = useState<CandidateResult | null>(null);
+
+  useEffect(() => {
+    const savedTheme = window.localStorage.getItem("ats-theme");
+    if (savedTheme === "dark") setDarkMode(true);
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("ats-theme", darkMode ? "dark" : "light");
+  }, [darkMode]);
 
   const selected = useMemo(() => {
     if (!results?.results.length) return null;
@@ -195,6 +208,18 @@ export default function Home() {
     }
   }
 
+  async function handleReportDownload(candidate: CandidateResult) {
+    setLoading("csv");
+    try {
+      await downloadAtsReport(candidate.id, adminToken);
+      showToast("success", `${candidate.name}'s ATS report downloaded.`);
+    } catch (err) {
+      showToast("error", err instanceof Error ? err.message : "ATS report download failed.");
+    } finally {
+      setLoading(null);
+    }
+  }
+
   async function handleEmailShortlist() {
     setLoading("email");
     try {
@@ -227,7 +252,7 @@ export default function Home() {
               </div>
               <div className="min-w-0">
                 <p className="truncate text-base font-semibold">{productName}</p>
-                <p className="hidden text-xs text-slate-500 dark:text-slate-400 sm:block">Recruiter dashboard for ATS scoring, ranking, and skill intelligence</p>
+                <p className="hidden text-xs text-slate-500 dark:text-slate-400 sm:block">Recruiter dashboard for ATS scoring, ranking, reports, and skill intelligence</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -341,6 +366,15 @@ export default function Home() {
                 {loading === "upload" ? <Loader2 size={17} className="animate-spin" aria-hidden /> : <FileText size={17} aria-hidden />}
                 Upload resumes
               </button>
+              {uploaded.length > 0 && (
+                <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-white/10 dark:bg-white/5">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Upload stats</p>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                    <Metric label="Uploaded" value={uploaded.length.toString()} />
+                    <Metric label="Parsed chars" value={uploaded.reduce((sum, item) => sum + item.characters, 0).toLocaleString()} />
+                  </div>
+                </div>
+              )}
             </Panel>
 
             <Panel>
@@ -446,6 +480,7 @@ export default function Home() {
 
             {results ? (
               <>
+                {results.results[0] && <TopCandidateHighlight candidate={results.results[0]} onReport={() => handleReportDownload(results.results[0])} onPreview={() => setPreviewCandidate(results.results[0])} />}
                 <AnalyticsGrid analytics={analytics} />
                 <div className="grid gap-5 xl:grid-cols-[420px_minmax(0,1fr)]">
                   <div className="space-y-3">
@@ -463,9 +498,18 @@ export default function Home() {
                     })}
                     {!filteredResults.length && <SmallEmptyState message="No candidates match the current filters." />}
                   </div>
-                  {selected && <CandidateDetail candidate={selected} jobAnalysis={results.job_analysis} />}
+                  {selected && (
+                    <CandidateDetail
+                      candidate={selected}
+                      jobAnalysis={results.job_analysis}
+                      onDownloadReport={() => handleReportDownload(selected)}
+                      onPreviewResume={() => setPreviewCandidate(selected)}
+                    />
+                  )}
                 </div>
               </>
+            ) : loading === "analyze" ? (
+              <LoadingSkeleton />
             ) : (
               <EmptyState />
             )}
@@ -477,6 +521,13 @@ export default function Home() {
         </footer>
 
         {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
+        {previewCandidate && (
+          <ResumePreviewModal
+            candidate={previewCandidate}
+            previewUrl={resumePreviewUrl(previewCandidate.id, adminToken)}
+            onClose={() => setPreviewCandidate(null)}
+          />
+        )}
       </div>
     </main>
   );
@@ -485,9 +536,13 @@ export default function Home() {
 function CandidateDetail({
   candidate,
   jobAnalysis,
+  onDownloadReport,
+  onPreviewResume,
 }: {
   candidate: CandidateResult;
   jobAnalysis: AnalyzeResponse["job_analysis"];
+  onDownloadReport: () => void;
+  onPreviewResume: () => void;
 }) {
   const allSkills = [...candidate.technical_skills, ...candidate.tools, ...candidate.soft_skills];
 
@@ -502,6 +557,27 @@ function CandidateDetail({
           <div className="text-4xl font-semibold">{Math.round(candidate.score)}%</div>
           <p className="text-sm text-slate-500 dark:text-slate-400">ATS match</p>
         </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={onPreviewResume}
+          className="focus-ring inline-flex h-10 items-center justify-center gap-2 border border-slate-200 bg-white text-sm font-semibold transition hover:border-accent hover:text-accent dark:border-white/10 dark:bg-white/10"
+          style={{ borderRadius: 8 }}
+        >
+          <Eye size={16} aria-hidden />
+          Preview resume
+        </button>
+        <button
+          type="button"
+          onClick={onDownloadReport}
+          className="focus-ring inline-flex h-10 items-center justify-center gap-2 bg-accent text-sm font-semibold text-white transition hover:bg-blue-700"
+          style={{ borderRadius: 8 }}
+        >
+          <Download size={16} aria-hidden />
+          ATS report PDF
+        </button>
       </div>
 
       <div className="mt-5 grid gap-3 sm:grid-cols-3">
@@ -603,6 +679,79 @@ function AnalyticsGrid({ analytics }: { analytics: ReturnType<typeof buildAnalyt
   );
 }
 
+function TopCandidateHighlight({
+  candidate,
+  onReport,
+  onPreview,
+}: {
+  candidate: CandidateResult;
+  onReport: () => void;
+  onPreview: () => void;
+}) {
+  return (
+    <div className="overflow-hidden border border-blue-200 bg-gradient-to-br from-blue-700 via-cyan-700 to-slate-950 text-white shadow-sm dark:border-blue-400/20" style={{ borderRadius: 8 }}>
+      <div className="grid gap-4 p-5 lg:grid-cols-[1fr_auto] lg:items-center">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-blue-100">Top candidate</p>
+          <h2 className="mt-2 text-2xl font-semibold">{candidate.name}</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-blue-50">{candidate.summary}</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {candidate.skills_matched.slice(0, 6).map((skill) => (
+              <span key={skill} className="border border-white/20 bg-white/10 px-2 py-1 text-xs font-medium backdrop-blur" style={{ borderRadius: 999 }}>
+                {skill}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="min-w-44">
+          <div className="text-5xl font-semibold">{Math.round(candidate.score)}%</div>
+          <p className="mt-1 text-sm text-blue-100">ATS match</p>
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <button type="button" onClick={onPreview} className="focus-ring inline-flex h-10 items-center justify-center gap-2 bg-white/10 text-sm font-semibold backdrop-blur transition hover:bg-white/20" style={{ borderRadius: 8 }}>
+              <Eye size={16} aria-hidden />
+              Preview
+            </button>
+            <button type="button" onClick={onReport} className="focus-ring inline-flex h-10 items-center justify-center gap-2 bg-white text-sm font-semibold text-blue-700 transition hover:bg-blue-50" style={{ borderRadius: 8 }}>
+              <Download size={16} aria-hidden />
+              Report
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LoadingSkeleton() {
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-5 xl:grid-cols-3">
+        {[0, 1, 2].map((item) => (
+          <Panel key={item}>
+            <div className="h-4 w-36 animate-pulse bg-slate-200 dark:bg-white/10" style={{ borderRadius: 999 }} />
+            <div className="mt-5 h-44 animate-pulse bg-slate-100 dark:bg-white/5" style={{ borderRadius: 8 }} />
+          </Panel>
+        ))}
+      </div>
+      <div className="grid gap-5 xl:grid-cols-[420px_minmax(0,1fr)]">
+        <div className="space-y-3">
+          {[0, 1, 2].map((item) => (
+            <div key={item} className="border border-white/70 bg-white/85 p-4 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/85" style={{ borderRadius: 8 }}>
+              <div className="h-5 w-2/3 animate-pulse bg-slate-200 dark:bg-white/10" style={{ borderRadius: 999 }} />
+              <div className="mt-3 h-3 w-full animate-pulse bg-slate-100 dark:bg-white/5" style={{ borderRadius: 999 }} />
+              <div className="mt-4 h-16 animate-pulse bg-slate-100 dark:bg-white/5" style={{ borderRadius: 8 }} />
+            </div>
+          ))}
+        </div>
+        <Panel>
+          <div className="h-6 w-56 animate-pulse bg-slate-200 dark:bg-white/10" style={{ borderRadius: 999 }} />
+          <div className="mt-5 h-80 animate-pulse bg-slate-100 dark:bg-white/5" style={{ borderRadius: 8 }} />
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
 function EmptyState() {
   return (
     <div className="grid min-h-[440px] place-items-center border border-white/70 bg-white/80 p-8 text-center shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/80" style={{ borderRadius: 8 }}>
@@ -614,6 +763,44 @@ function EmptyState() {
         <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600 dark:text-slate-300">
           Ranked candidate cards, missing skills, score breakdowns, analytics, and resume previews will appear here.
         </p>
+      </div>
+    </div>
+  );
+}
+
+function ResumePreviewModal({
+  candidate,
+  previewUrl,
+  onClose,
+}: {
+  candidate: CandidateResult;
+  previewUrl: string;
+  onClose: () => void;
+}) {
+  const isPdf = candidate.filename.toLowerCase().endsWith(".pdf");
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/70 p-4 backdrop-blur-sm">
+      <div className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden border border-white/20 bg-white shadow-2xl dark:bg-slate-950" style={{ borderRadius: 8 }}>
+        <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-4 py-3 dark:border-white/10">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold">{candidate.name}</p>
+            <p className="truncate text-xs text-slate-500 dark:text-slate-400">{candidate.filename}</p>
+          </div>
+          <button type="button" aria-label="Close resume preview" onClick={onClose} className="focus-ring grid h-9 w-9 shrink-0 place-items-center border border-slate-200 bg-white text-slate-600 hover:text-slate-950 dark:border-white/10 dark:bg-white/10 dark:text-slate-100" style={{ borderRadius: 8 }}>
+            <X size={17} aria-hidden />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 bg-slate-100 p-3 dark:bg-slate-900">
+          {isPdf ? (
+            <iframe title={`${candidate.name} resume preview`} src={previewUrl} className="h-[72vh] w-full border border-slate-200 bg-white dark:border-white/10" style={{ borderRadius: 8 }} />
+          ) : (
+            <div className="h-[72vh] overflow-auto border border-slate-200 bg-white p-5 text-sm leading-7 dark:border-white/10 dark:bg-slate-950" style={{ borderRadius: 8 }}>
+              <p className="mb-4 text-sm font-semibold text-slate-500 dark:text-slate-400">DOCX browser preview is shown as parsed text.</p>
+              {candidate.resume_text}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -99,6 +99,7 @@ def serialize_run(run: ScreeningRun) -> dict:
         "results": [
             {
                 "id": result.id,
+                "resume_id": result.resume_id,
                 "name": result.resume.candidate_name,
                 "filename": result.resume.original_filename,
                 "score": result.score,

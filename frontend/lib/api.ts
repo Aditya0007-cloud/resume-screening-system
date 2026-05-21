@@ -1,5 +1,6 @@
 export type CandidateResult = {
   id: number;
+  resume_id: number;
   name: string;
   filename: string;
   score: number;
@@ -102,6 +103,26 @@ export async function downloadResultsCsv(adminToken = "") {
   link.download = "resume-screening-results.csv";
   link.click();
   URL.revokeObjectURL(url);
+}
+
+export async function downloadAtsReport(resultId: number, adminToken = "") {
+  const response = await fetch(`${API_BASE}/results/${resultId}/report`, {
+    headers: adminHeaders(adminToken),
+  });
+  if (!response.ok) throw new Error(await readError(response));
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `ats-report-${resultId}.pdf`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+export function resumePreviewUrl(resultId: number, adminToken = "") {
+  const url = new URL(`${API_BASE}/results/${resultId}/resume-file`);
+  if (adminToken.trim()) url.searchParams.set("admin_token", adminToken.trim());
+  return url.toString();
 }
 
 export async function sendShortlistEmail(recipientEmail: string, runId: number | null, adminToken = "") {

@@ -2,7 +2,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse, Response
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -20,6 +20,7 @@ from backend.schemas.result import (
 )
 from backend.services.emailer import send_shortlist_email
 from backend.services.parser import ResumeParseError, parse_resume
+from backend.services.report import build_ats_report_pdf
 from backend.services.screening import run_screening, serialize_run
 from backend.utils.csv_export import results_to_csv
 
@@ -111,6 +112,49 @@ def export_results(
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=resume-screening-results.csv"},
     )
+
+
+@router.get("/results/{result_id}/report")
+def download_ats_report(
+    result_id: int,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+) -> Response:
+    result = db.query(ScreeningResult).filter(ScreeningResult.id == result_id).first()
+    if not result:
+        raise HTTPException(status_code=404, detail="Screening result not found.")
+
+    run_payload = serialize_run(result.run)
+    candidate = next((item for item in run_payload["results"] if item["id"] == result_id), None)
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate report data not found.")
+
+    pdf = build_ats_report_pdf(candidate, run_payload)
+    safe_name = "".join(char for char in candidate["name"].lower().replace(" ", "-") if char.isalnum() or char == "-")
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={safe_name or 'candidate'}-ats-report.pdf"},
+    )
+
+
+@router.get("/results/{result_id}/resume-file")
+def preview_resume_file(
+    result_id: int,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+) -> FileResponse:
+    result = db.query(ScreeningResult).filter(ScreeningResult.id == result_id).first()
+    if not result:
+        raise HTTPException(status_code=404, detail="Screening result not found.")
+
+    settings = get_settings()
+    path = settings.upload_dir / result.resume.filename
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Uploaded resume file is no longer available.")
+
+    media_type = "application/pdf" if path.suffix.lower() == ".pdf" else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    return FileResponse(path, media_type=media_type, filename=result.resume.original_filename)
 
 
 @router.get("/resumes")
