@@ -56,6 +56,7 @@ Environment variables:
 
 ```env
 APP_NAME=AI Resume Screening & ATS Analyzer
+PYTHON_VERSION=3.11.11
 DATABASE_URL=sqlite:///./data/resume_screening.db
 UPLOAD_DIR=data/uploads
 CORS_ORIGINS=["https://your-vercel-app.vercel.app"]

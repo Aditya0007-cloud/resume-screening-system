@@ -9,6 +9,8 @@ services:
     envVars:
       - key: APP_NAME
         value: AI Resume Screening & ATS Analyzer
+      - key: PYTHON_VERSION
+        value: 3.11.11
       - key: DATABASE_URL
         value: sqlite:///./data/resume_screening.db
       - key: CORS_ORIGINS
